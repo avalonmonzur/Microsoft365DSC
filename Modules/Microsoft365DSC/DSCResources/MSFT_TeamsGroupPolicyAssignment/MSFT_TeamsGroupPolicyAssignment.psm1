@@ -1,0 +1,427 @@
+function Get-TargetResource
+{
+    [CmdletBinding()]
+    [OutputType([System.Collections.Hashtable])]
+    param
+    (
+        [Parameter(Mandatory = $true)]
+        [System.String]
+        $GroupDisplayName,
+
+        [Parameter()]
+        [System.String]
+        $GroupId,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('ApplicationAccessPolicy','CallingLineIdentity','OnlineAudioConferencingRoutingPolicy','OnlineVoicemailPolicy','OnlineVoiceRoutingPolicy','TeamsAudioConferencingPolicy','TeamsCallHoldPolicy','TeamsCallParkPolicy','TeamsChannelsPolicy','TeamsComplianceRecordingPolicy','TeamsCortanaPolicy','TeamsEmergencyCallingPolicy','TeamsEnhancedEncryptionPolicy','TeamsFeedbackPolicy','TeamsFilesPolicy','TeamsIPPhonePolicy','TeamsMediaLoggingPolicy','TeamsMeetingBroadcastPolicy','TeamsMeetingPolicy','TeamsMessagingPolicy','TeamsMobilityPolicy','TeamsRoomVideoTeleConferencingPolicy','TeamsShiftsPolicy','TeamsUpdateManagementPolicy','TeamsVdiPolicy','TeamsVideoInteropServicePolicy','TenantDialPlan','ExternalAccessPolicy','TeamsAppSetupPolicy','TeamsCallingPolicy','TeamsEventsPolicy','TeamsMeetingBrandingPolicy','TeamsMeetingTemplatePermissionPolicy')]
+        [System.String]
+        $PolicyType,
+
+        [Parameter()]
+        [System.String]
+        $PolicyName,
+
+        [Parameter()]
+        [System.String]
+        $Priority,
+
+        [Parameter()]
+        [ValidateSet('Present', 'Absent')]
+        [System.String]
+        $Ensure = 'Present',
+
+        [Parameter()]
+        [System.Management.Automation.PSCredential]
+        $Credential,
+
+        [Parameter()]
+        [System.String]
+        $ApplicationId,
+
+        [Parameter()]
+        [System.String]
+        $TenantId,
+
+        [Parameter()]
+        [System.String]
+        $CertificateThumbprint
+    )
+
+    $ConnectionMode = New-M365DSCConnection -Workload 'MicrosoftTeams' -InboundParameters $PSBoundParameters
+
+    #Ensure the proper dependencies are installed in the current environment.
+    Confirm-M365DSCDependencies
+
+    #region Telemetry
+    $ResourceName = $MyInvocation.MyCommand.ModuleName -replace 'MSFT_', ''
+    $CommandName = $MyInvocation.MyCommand
+    $data = Format-M365DSCTelemetryParameters -ResourceName $ResourceName `
+        -CommandName $CommandName `
+        -Parameters $PSBoundParameters
+    Add-M365DSCTelemetryEvent -Data $data
+    #endregion
+
+    $nullReturn = $PSBoundParameters
+    $nullReturn.Ensure = 'Absent'
+
+    try
+    {
+        if (-not [System.String]::IsNullOrEmpty($GroupId))
+        {
+            Write-Verbose -Message "Getting GroupPolicyAssignment for {$GroupId}"
+            $group = Find-CsGroup -SearchQuery $GroupId -ErrorAction SilentlyContinue
+            if ($group.Length -gt 1)
+            {
+                Write-Verbose -Message "Found $($group.Length) groups with the id {$GroupId}"
+                $Group = $Group | Where-Object { $_.DisplayName -eq $GroupDisplayName }
+            }
+        }
+        else
+        {
+            Write-Verbose -Message "Getting GroupPolicyAssignment for {$GroupDisplayName}"
+            $Group = Find-CsGroup -SearchQuery $GroupDisplayName -ErrorAction SilentlyContinue
+            if ($Group.Length -gt 1)
+            {
+                Write-Verbose -Message "Found $($group.Length) groups with the name $GroupDisplayName"
+                $Group = $Group | Where-Object { $_.DisplayName -eq $GroupDisplayName }
+            }
+        }
+        if ($null -eq $Group)
+        {
+            Write-Verbose -Message "Group not found for $GroupDisplayName"
+            return $nullReturn
+        }
+        $GroupPolicyAssignment = Get-CsGroupPolicyAssignment -GroupId $Group.Id -PolicyType $PolicyType -ErrorAction SilentlyContinue
+        if ($null -eq $GroupPolicyAssignment)
+        {
+            Write-Verbose -Message "GroupPolicyAssignment not found for $GroupDisplayName"
+            $nullReturn.GroupId = $Group.Id
+            return $nullReturn
+        }
+        Write-Verbose -Message "Found GroupPolicyAssignment $($Group.Displayname) with PolicyType:$($GroupPolicyAssignment.PolicyType) and Policy Name:$($GroupPolicyAssignment.PolicyName)"
+        return @{
+            GroupId               = $Group.Id
+            GroupDisplayName      = $Group.Displayname
+            PolicyType            = $GroupPolicyAssignment.PolicyType
+            PolicyName            = $GroupPolicyAssignment.PolicyName
+            Priority              = $GroupPolicyAssignment.Priority
+            Ensure                = 'Present'
+            Credential            = $Credential
+            ApplicationId         = $ApplicationId
+            TenantId              = $TenantId
+            CertificateThumbprint = $CertificateThumbprint
+        }
+    }
+    catch
+    {
+        New-M365DSCLogEntry -Message 'Error retrieving data:' `
+            -Exception $_ `
+            -Source $($MyInvocation.MyCommand.Source) `
+            -TenantId $TenantId `
+            -Credential $Credential
+
+        return $nullReturn
+    }
+}
+
+function Set-TargetResource
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory = $true)]
+        [System.String]
+        $GroupDisplayName,
+
+        [Parameter()]
+        [System.String]
+        $GroupId,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('ApplicationAccessPolicy','CallingLineIdentity','OnlineAudioConferencingRoutingPolicy','OnlineVoicemailPolicy','OnlineVoiceRoutingPolicy','TeamsAudioConferencingPolicy','TeamsCallHoldPolicy','TeamsCallParkPolicy','TeamsChannelsPolicy','TeamsComplianceRecordingPolicy','TeamsCortanaPolicy','TeamsEmergencyCallingPolicy','TeamsEnhancedEncryptionPolicy','TeamsFeedbackPolicy','TeamsFilesPolicy','TeamsIPPhonePolicy','TeamsMediaLoggingPolicy','TeamsMeetingBroadcastPolicy','TeamsMeetingPolicy','TeamsMessagingPolicy','TeamsMobilityPolicy','TeamsRoomVideoTeleConferencingPolicy','TeamsShiftsPolicy','TeamsUpdateManagementPolicy','TeamsVdiPolicy','TeamsVideoInteropServicePolicy','TenantDialPlan','ExternalAccessPolicy','TeamsAppSetupPolicy','TeamsCallingPolicy','TeamsEventsPolicy','TeamsMeetingBrandingPolicy','TeamsMeetingTemplatePermissionPolicy')]
+        [System.String]
+        $PolicyType,
+
+        [Parameter()]
+        [System.String]
+        $PolicyName,
+
+        [Parameter()]
+        [System.String]
+        $Priority,
+
+        [Parameter()]
+        [ValidateSet('Present', 'Absent')]
+        [System.String]
+        $Ensure = 'Present',
+
+        [Parameter()]
+        [System.Management.Automation.PSCredential]
+        $Credential,
+
+        [Parameter()]
+        [System.String]
+        $ApplicationId,
+
+        [Parameter()]
+        [System.String]
+        $TenantId,
+
+        [Parameter()]
+        [System.String]
+        $CertificateThumbprint
+    )
+
+    #Ensure the proper dependencies are installed in the current environment.
+    Confirm-M365DSCDependencies
+
+    #region Telemetry
+    $ResourceName = $MyInvocation.MyCommand.ModuleName -replace 'MSFT_', ''
+    $CommandName = $MyInvocation.MyCommand
+    $data = Format-M365DSCTelemetryParameters -ResourceName $ResourceName `
+        -CommandName $CommandName `
+        -Parameters $PSBoundParameters
+    Add-M365DSCTelemetryEvent -Data $data
+    #endregion
+
+    $ConnectionMode = New-M365DSCConnection -Workload 'MicrosoftTeams' -InboundParameters $PSBoundParameters
+    $CurrentValues = Get-TargetResource @PSBoundParameters
+
+    try
+    {
+        if ($Ensure -eq 'Present' -and $CurrentValues.Ensure -eq 'Absent')
+        {
+            Write-Verbose -Message "Adding GroupPolicyAssignment for $GroupDisplayName"
+            $parameters = @{
+                GroupId    = $CurrentValues.GroupId
+                PolicyType = $PolicyType
+                PolicyName = $PolicyName
+            }
+
+            if (-not [System.String]::IsNullOrEmpty($Priority))
+            {
+                $parameters.Add('Rank', $Priority)
+            }
+            New-CsGroupPolicyAssignment @parameters `
+                -ErrorAction Stop
+        }
+        elseif ($Ensure -eq 'Present' -and $CurrentValues.Ensure -eq 'Present')
+        {
+            #Set-CsGroupPolicyAssignment not implemented jet / use remove-add as described in docs
+            Write-Verbose -Message "Remove GroupPolicyAssignment for $GroupDisplayName"
+            Remove-CsGroupPolicyAssignment -GroupId $CurrentValues.GroupId -PolicyType $CurrentValues.PolicyType
+            Write-Verbose -Message "Adding GroupPolicyAssignment for $GroupDisplayName"
+            New-CsGroupPolicyAssignment -GroupId $CurrentValues.GroupId `
+                -PolicyType $PolicyType `
+                -PolicyName $PolicyName `
+                -Rank $Priority `
+                -ErrorAction Stop
+        }
+        elseif ($Ensure -eq 'Absent' -and $CurrentValues.Ensure -eq 'Present')
+        {
+            Write-Verbose -Message "Remove GroupPolicyAssignment for $GroupDisplayName"
+            Remove-CsGroupPolicyAssignment -GroupId $CurrentValues.GroupId -PolicyType $CurrentValues.PolicyType
+        }
+    }
+    catch
+    {
+        Write-Verbose -Message "Error: $($_.Exception.Message)"
+        New-M365DSCLogEntry -Message "Error while setting GroupPolicyAssignment for $GroupDisplayName" `
+            -Exception $_ `
+            -Source $($MyInvocation.MyCommand.Source) `
+            -TenantId $TenantId `
+            -Credential $Credential
+        throw $_
+    }
+}
+
+function Test-TargetResource
+{
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param
+    (
+        [Parameter(Mandatory = $true)]
+        [System.String]
+        $GroupDisplayName,
+
+        [Parameter()]
+        [System.String]
+        $GroupId,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('ApplicationAccessPolicy','CallingLineIdentity','OnlineAudioConferencingRoutingPolicy','OnlineVoicemailPolicy','OnlineVoiceRoutingPolicy','TeamsAudioConferencingPolicy','TeamsCallHoldPolicy','TeamsCallParkPolicy','TeamsChannelsPolicy','TeamsComplianceRecordingPolicy','TeamsCortanaPolicy','TeamsEmergencyCallingPolicy','TeamsEnhancedEncryptionPolicy','TeamsFeedbackPolicy','TeamsFilesPolicy','TeamsIPPhonePolicy','TeamsMediaLoggingPolicy','TeamsMeetingBroadcastPolicy','TeamsMeetingPolicy','TeamsMessagingPolicy','TeamsMobilityPolicy','TeamsRoomVideoTeleConferencingPolicy','TeamsShiftsPolicy','TeamsUpdateManagementPolicy','TeamsVdiPolicy','TeamsVideoInteropServicePolicy','TenantDialPlan','ExternalAccessPolicy','TeamsAppSetupPolicy','TeamsCallingPolicy','TeamsEventsPolicy','TeamsMeetingBrandingPolicy','TeamsMeetingTemplatePermissionPolicy')]
+        [System.String]
+        $PolicyType,
+
+        [Parameter()]
+        [System.String]
+        $PolicyName,
+
+        [Parameter()]
+        [System.String]
+        $Priority,
+
+        [Parameter()]
+        [ValidateSet('Present', 'Absent')]
+        [System.String]
+        $Ensure = 'Present',
+
+        [Parameter()]
+        [System.Management.Automation.PSCredential]
+        $Credential,
+
+        [Parameter()]
+        [System.String]
+        $ApplicationId,
+
+        [Parameter()]
+        [System.String]
+        $TenantId,
+
+        [Parameter()]
+        [System.String]
+        $CertificateThumbprint
+    )
+    #Ensure the proper dependencies are installed in the current environment.
+    Confirm-M365DSCDependencies
+
+    #region Telemetry
+    $ResourceName = $MyInvocation.MyCommand.ModuleName -replace 'MSFT_', ''
+    $CommandName = $MyInvocation.MyCommand
+    $data = Format-M365DSCTelemetryParameters -ResourceName $ResourceName `
+        -CommandName $CommandName `
+        -Parameters $PSBoundParameters
+    Add-M365DSCTelemetryEvent -Data $data
+    #endregion
+
+    $CurrentValues = Get-TargetResource @PSBoundParameters
+    $ValuesToCheck = ([Hashtable]$PSBoundParameters).Clone()
+    $ValuesToCheck.Remove('GroupId') | Out-Null
+
+    Write-Verbose -Message "Current Values: $(Convert-M365DscHashtableToString -Hashtable $CurrentValues)"
+    Write-Verbose -Message "Target Values: $(Convert-M365DscHashtableToString -Hashtable $PSBoundParameters)"
+
+    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+        -Source $($MyInvocation.MyCommand.Source) `
+        -DesiredValues $PSBoundParameters `
+        -ValuesToCheck $ValuesToCheck.Keys
+
+    Write-Verbose -Message "Test-TargetResource returned $TestResult"
+
+    return $TestResult
+}
+
+function Export-TargetResource
+{
+    [CmdletBinding()]
+    [OutputType([System.String])]
+    param
+    (
+        [Parameter()]
+        [System.Management.Automation.PSCredential]
+        $Credential,
+
+        [Parameter()]
+        [System.String]
+        $ApplicationId,
+
+        [Parameter()]
+        [System.String]
+        $TenantId,
+
+        [Parameter()]
+        [System.String]
+        $CertificateThumbprint
+    )
+    $InformationPreference = 'Continue'
+    $ConnectionMode = New-M365DSCConnection -Workload 'MicrosoftTeams' -InboundParameters $PSBoundParameters
+
+    #Ensure the proper dependencies are installed in the current environment.
+    Confirm-M365DSCDependencies
+
+    #region Telemetry
+    $ResourceName = $MyInvocation.MyCommand.ModuleName -replace 'MSFT_', ''
+    $CommandName = $MyInvocation.MyCommand
+    $data = Format-M365DSCTelemetryParameters -ResourceName $ResourceName `
+        -CommandName $CommandName `
+        -Parameters $PSBoundParameters
+    Add-M365DSCTelemetryEvent -Data $data
+    #endregion
+
+    try
+    {
+        [array]$instances = Get-CsGroupPolicyAssignment
+        if ($instances.Length -eq 0)
+        {
+            Write-Host $Global:M365DSCEmojiGreenCheckMark
+        }
+        else
+        {
+            Write-Host "`r`n" -NoNewline
+        }
+        $dscContent = [System.Text.StringBuilder]::new()
+        $j = 1
+        $totalCount = $instances.Length
+        foreach ($item in $instances)
+        {
+            [array]$Group = Find-CsGroup -SearchQuery $item.GroupId -ExactMatchOnly $true
+            if ($null -eq $totalCount)
+            {
+                $totalCount = 1
+            }
+            if ($totalCount -Eq 0)
+            {
+                $Message = "GPA The CSsGroup with ID {$($item.GroupId)} could not be found"
+                New-M365DSCLogEntry -Message $Message `
+                    -Source $MyInvocation.MyCommand.ModuleName
+                Write-Error $Message
+                $groupDisplayName = ""
+            } else {
+                $groupDisplayName = $Group[0].DisplayName
+            }
+            Write-Host "    |---[$j/$totalCount] GroupPolicyAssignment {$($Group[0].DisplayName)}" -NoNewline
+            $results = @{
+                GroupDisplayName      = $groupDisplayName
+                GroupId               = $item.GroupId
+                PolicyType            = $item.PolicyType
+                PolicyName            = $item.PolicyName
+                Priority              = $item.Priority
+                Ensure                = 'Present'
+                Credential            = $Credential
+                ApplicationId         = $ApplicationId
+                TenantId              = $TenantId
+                CertificateThumbprint = $CertificateThumbprint
+            }
+            #$results = Get-TargetResource @getParams
+            $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
+                -Results $Results
+            $currentDSCBlock = Get-M365DSCExportContentForResource -ResourceName $ResourceName `
+                -ConnectionMode $ConnectionMode `
+                -ModulePath $PSScriptRoot `
+                -Results $Results `
+                -Credential $Credential
+            $dscContent.Append($currentDSCBlock) | Out-Null
+            Save-M365DSCPartialExport -Content $currentDSCBlock `
+                -FileName $Global:PartialExportFileName
+            Write-Host $Global:M365DSCEmojiGreenCheckMark
+
+            $j++
+        }
+        return $dscContent.ToString()
+    }
+    catch
+    {
+        Write-Host $Global:M365DSCEmojiRedX
+
+        New-M365DSCLogEntry -Message 'Error during Export:' `
+            -Exception $_ `
+            -Source $($MyInvocation.MyCommand.Source) `
+            -TenantId $TenantId `
+            -Credential $Credential
+
+        return ''
+    }
+}
+
+Export-ModuleMember -Function *-TargetResource
